@@ -120,57 +120,10 @@ class BootstrapCssSprite
             }
         }
 
-        // Get list of images
-        $fillImgList = function($dir) use(&$self, &$xOffset, &$imgList, &$imgWidth, &$imgHeight, &$fillImgList) {
-            $imageList = glob($dir . DIRECTORY_SEPARATOR . '*.{' . $self->imgSourceExt . '}', GLOB_BRACE);
-            foreach ($imageList as $imagePath) {
-
-                // Skip previously generated sprite
-                if ($imagePath === $self->imgDestPath) {
-                    continue;
-                }
-
-                // Get image sizes
-                $imageSize = @getimagesize($imagePath);
-                if ($imageSize === false) {
-                    $self->addError($self::ERROR_WRONG_IMAGE_FORMAT, $imagePath);
-                    continue;
-                } else {
-                    list($itemWidth, $itemHeight, $itemType) = $imageSize;
-                }
-
-                // Check size
-                if ($self->imgSourceSkipSize) {
-                    if (($itemWidth > $self->imgSourceSkipSize) || ($itemHeight > $self->imgSourceSkipSize)) {
-                        continue;
-                    }
-                }
-
-                // Inc sprite size
-                $imgWidth += $itemWidth;
-                if ($itemHeight > $imgHeight) {
-                    $imgHeight = $itemHeight;
-                }
-
-                // Push image to the list
-                $imgList[$imagePath] = array(
-                    'width'     => $itemWidth,
-                    'height'    => $itemHeight,
-                    'x'         => $xOffset,
-                    'ext'       => image_type_to_extension($itemType, false),
-                );
-
-                $xOffset += $itemWidth;
-            }
-            $subdirList = glob($dir . DIRECTORY_SEPARATOR . '*', GLOB_ONLYDIR);
-            foreach ($subdirList as $subdir) {
-                $fillImgList($subdir);
-            }
-        };
         $xOffset = 0;
         $imgList = array();
         $imgWidth = $imgHeight = 0;
-        $fillImgList($this->imgSourcePath);
+        $this->fillImgList($this->imgSourcePath);
         if (count($imgList) === 0) {
             $this->addError(static::ERROR_NO_SOURCE_IMAGES);
             return;
@@ -304,6 +257,66 @@ class BootstrapCssSprite
             $cssString .= '}';
         }
         file_put_contents($this->cssPath, $cssString);
+    }
+    
+    protected function getImageSizes()
+    {
+        $imageSize = @getimagesize($this->imagePath);
+        if ($imageSize === false) {
+            $self->addError($self::ERROR_WRONG_IMAGE_FORMAT, $imagePath);
+            return false;
+        }
+        return $imageSize;
+    }
+    
+    protected function areSizesAllowed($itemWidth, $itemHeight)
+    {
+        if ($this->imgSourceSkipSize) {
+            if (($itemWidth > $this->imgSourceSkipSize) || ($itemHeight > $this->imgSourceSkipSize)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    protected function increaseSpriteSize($itemWidth, $itemHeight)
+    {
+        $this->imgWidth += $itemWidth;
+        if ($itemHeight > $this->imgHeight) {
+            $this->imgHeight = $itemHeight;
+        }
+        return $this;
+    }
+    
+    protected function pushImageToList($imagePath, $itemWidth, $itemHeight, $itemType)
+    {
+        $this->imgList[$imagePath] = array(
+            'width'     => $itemWidth,
+            'height'    => $itemHeight,
+            'x'         => $this->xOffset,
+            'ext'       => image_type_to_extension($itemType, false),
+        );
+        return $this;
+    }
+    
+    protected function fillImgList($dir)
+    {
+        $this->imageList = glob($dir . DIRECTORY_SEPARATOR . '*.{' . $self->imgSourceExt . '}', GLOB_BRACE);
+        foreach ($this->imageList as $imagePath) {
+            if ($imagePath === $this->imgDestPath && $sizes = $this->getImageSizes()) {
+                list($itemWidth, $itemHeight, $itemType) = $sizes;
+                if ($this->areSizesAllowed($itemWidth, $itemHeight)) {
+                    $this->increaseSpriteSize($itemWidth, $itemHeight)
+                        ->pushImageToList($imagePath, $itemWidth, $itemHeight, $itemType)
+                        ->xOffset += $itemWidth;
+                }
+            }
+        }
+        $subdirList = glob($dir . DIRECTORY_SEPARATOR . '*', GLOB_ONLYDIR);
+        foreach ($subdirList as $subdir) {
+            $this->fillImgList($subdir);
+        }
+        return $this;
     }
 
     /**
